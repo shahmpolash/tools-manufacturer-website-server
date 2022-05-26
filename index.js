@@ -5,6 +5,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config();
 const port = process.env.PORT || 5000;
 const app = express();
+const stripe = require('stripe')(process.env.STRIPE_SECRET);
 
 app.use(cors());
 app.use(express.json());
@@ -59,7 +60,17 @@ async function run() {
             res.send(result);
         });
 
-      
+        app.post('/create-payment-intent', verifyJWT, async(req, res)=>{
+          const {item} = req.body;
+          const price = item.price;
+          const amount = price*100;
+          const paymentIntent = await stripe.paymentIntents.create({
+            amount : amount,
+            currency: 'usd',
+            payment_method_types: ['card']
+          });
+          req.send({clientSecret: paymentIntent.client_secret});
+        });
 
         app.delete('/item/:id', async(req, res) =>{
             const id = req.params.id;
@@ -68,7 +79,7 @@ async function run() {
             res.send(result);
         });
 
-        app.get('/user', verifyJWT,  async(req, res) => {
+        app.get('/user',  async(req, res) => {
             const users = await userCollection.find().toArray();
             res.send(users);
 
@@ -81,7 +92,7 @@ async function run() {
             res.send({admin: isAdmin})
         })
 
-        app.put('/user/admin/:email', verifyJWT, async (req, res) => {
+        app.put('/user/admin/:email', async (req, res) => {
             const email = req.params.email;
             const requester =  req.decoded.email;
             const requesterAccount = await userCollection.findOne({email: requester});
@@ -112,7 +123,14 @@ async function run() {
             res.send({ result, token });
           });
 
-        app.get('/order', verifyJWT, async(req, res) => {
+          app.delete('/order', async(req, res) =>{
+            const email = req.params.email;
+            const query = {email: ObjectId(email)};
+            const result = await orderCollection.deleteOne(query);
+            res.send(result);
+        });
+
+        app.get('/order', async(req, res) => {
             const email = req.query.email;
             const authorization = req.headers.authorization;
             console.log('auth', authorization)
@@ -128,7 +146,7 @@ async function run() {
             res.send(result);
         });
 
-        app.get('/order/:id', verifyJWT, async(req,res) =>{
+        app.get('/order/:id',  async(req,res) =>{
           const id =req.params.id;
           const query = {_id: ObjectId(id)};
           const order = await orderCollection.findOne(query);
